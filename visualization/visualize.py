@@ -1,88 +1,214 @@
-import numpy as np
-import matplotlib as mpl
-mpl.use("Qt5Agg")
-import matplotlib.pyplot as plt
-import cv2
-from mpl_toolkits.mplot3d import Axes3D
-import matplotlib.animation as animation
-from matplotlib import cm
-from scipy import ndimage
+"""
+PyTeapot module for drawing rotating cube using OpenGL as per
+quaternion or yaw, pitch, roll angles received over serial port.
+"""
+
+import pygame
 import math
+from OpenGL.GL import *
+from OpenGL.GLU import *
+from pygame.locals import *
 import csv
-import time
 from os import startfile
 
+useSerial = False # set true for using serial for data transmission, false for wifi
+useQuat = False   # set true for using quaternions, false for using y,p,r angles
+clock = pygame.time.Clock()
+
+if(useSerial):
+    import serial
+    ser = serial.Serial('/dev/ttyUSB0', 38400)
+else:
+    import socket
+
+    UDP_IP = "0.0.0.0"
+    UDP_PORT = 5005
+    sock = socket.socket(socket.AF_INET, # Internet
+                         socket.SOCK_DGRAM) # UDP
+    sock.bind((UDP_IP, UDP_PORT))
+
+def main():
+    video_flags = OPENGL | DOUBLEBUF
+    pygame.init()
+    screen = pygame.display.set_mode((640, 480), video_flags)
+    """FOR CSV"""
+    fileName = "VID_20220617_144837"
+    data_file = open('visualization/data/Y_rotation/' + fileName + 'orientation_mod.csv',  'r')
+    data_reader = csv.reader(data_file)
+    """"""
+    pygame.display.set_caption("IMU orientation visualization")
+    resizewin(640, 480)
+    init()
+    frames = 0
+    ticks = pygame.time.get_ticks()
+    #startfile('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Y_rotation/' + fileName + '.mp4')
+    for row in data_reader:
+        event = pygame.event.poll()
+        if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
+            break
+        if(useQuat):
+            [w, nx, ny, nz] = read_data()
+        else:
+            [yaw, pitch, roll] = [float(row[1]),float(row[0]),float(row[2])]
+        if(useQuat):
+            draw(w, nx, ny, nz)
+        else:
+            draw(1, yaw, pitch, roll)
+        pygame.display.flip()
+        #pygame.time.wait(22) #So that we're in sync to the video
+        clock.tick(30)
+        frames += 1
+    print("fps: %d" % ((frames*1000)/(pygame.time.get_ticks()-ticks)))
+    if(useSerial):
+        ser.close()
 
 
-plt.rcParams['figure.figsize'] = (6,4)
-plt.rcParams['figure.dpi'] = 150
+def resizewin(width, height):
+    """
+    For resizing window
+    """
+    if height == 0:
+        height = 1
+    glViewport(0, 0, width, height)
+    glMatrixMode(GL_PROJECTION)
+    glLoadIdentity()
+    gluPerspective(45, 1.0*width/height, 0.1, 100.0)
+    glMatrixMode(GL_MODELVIEW)
+    glLoadIdentity()
 
-from scipy.spatial.transform import Rotation as R
 
-def getAxisVectors(x, y, z):
-    r = R.from_euler('xyz', [x,y,z], degrees=True)
-    return np.array(r.as_matrix())
+def init():
+    glShadeModel(GL_SMOOTH)
+    glClearColor(0.0, 0.0, 0.0, 0.0)
+    glClearDepth(1.0)
+    glEnable(GL_DEPTH_TEST)
+    glDepthFunc(GL_LEQUAL)
+    glHint(GL_PERSPECTIVE_CORRECTION_HINT, GL_NICEST)
 
-def updateOrientation(rotationMatrix):
-    global quiver_x
-    global quiver_y
-    global quiver_z
-    
-    quiver_x.remove()
-    quiver_y.remove()
-    quiver_z.remove()
-    print(rotationMatrix)
-    x = rotationMatrix[0]
-    y = rotationMatrix[1]
-    z = rotationMatrix[2]
-    quiver_x = ax.quiver(0,0,0,x[0],x[1],x[2],color='g')
-    quiver_y = ax.quiver(0,0,0,y[0],y[1],y[2],color='r')
-    quiver_z = ax.quiver(0,0,0,z[0],z[1],z[2],color='b')
 
-def animate(j):
-    #if j % 32 != 0:
-       # return
-    read_file = open('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Z_rotation/VID_20220617_144805orientation_mod.csv', 'r')
-    reader = csv.reader(read_file)
-    
-    orientation = next((x for i, x in enumerate(reader) if i == j), None) #orientation at i'th row
-    rotationMatrix = getAxisVectors(x=float(orientation[0]), y=float(orientation[1]),z=float(orientation[2]))
-    updateOrientation(rotationMatrix)
-    _, curr_frame = cap.read()
-    RGB_img = cv2.cvtColor(curr_frame, cv2.COLOR_BGR2RGB)
-    Rotated_img = cv2.rotate(RGB_img, cv2.ROTATE_90_COUNTERCLOCKWISE)
-    
-    im.set_array(Rotated_img)
-    
-fig = plt.figure()
-plt.rcParams["figure.autolayout"] = True
-ax = fig.add_subplot(122, projection='3d')
-ay = fig.add_subplot(121)
+def cleanSerialBegin():
+    if(useQuat):
+        try:
+            line = ser.readline().decode('UTF-8').replace('\n', '')
+            w = float(line.split('w')[1])
+            nx = float(line.split('a')[1])
+            ny = float(line.split('b')[1])
+            nz = float(line.split('c')[1])
+        except Exception:
+            pass
+    else:
+        try:
+            line = ser.readline().decode('UTF-8').replace('\n', '')
+            yaw = float(line.split('y')[1])
+            pitch = float(line.split('p')[1])
+            roll = float(line.split('r')[1])
+        except Exception:
+            pass
 
-ay.set_xlim([0,1080])
-ay.set_ylim([0,1920])
 
-ax.set_xlim3d([-1.5,1.5])
-ax.set_ylim3d([-1.5,1.5])
-ax.set_zlim3d([-1.5,1.5])
+def read_data():
+    if(useSerial):
+        ser.reset_input_buffer()
+        cleanSerialBegin()
+        line = ser.readline().decode('UTF-8').replace('\n', '')
+        print(line)
+    else:
+        # Waiting for data from udp port 5005
+        data, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
+        line = data.decode('UTF-8').replace('\n', '')
+        print(line)
+                
+    if(useQuat):
+        w = float(line.split('w')[1])
+        nx = float(line.split('a')[1])
+        ny = float(line.split('b')[1])
+        nz = float(line.split('c')[1])
+        return [w, nx, ny, nz]
+    else:
+        yaw = float(line.split('y')[1])
+        pitch = float(line.split('p')[1])
+        roll = float(line.split('r')[1])
+        return [yaw, pitch, roll]
 
-ax.set_xlabel('x')
-ax.set_ylabel('y')
-ax.set_zlabel('z')
 
-"""Initiation orientation"""
-quiver_x = ax.quiver(0,0,0,1,0,0,color='g')
-quiver_y = ax.quiver(0,0,0,0,1,0,color='r')
-quiver_z = ax.quiver(0,0,0,0,0,1,color='b')
+def draw(w, nx, ny, nz):
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
+    glLoadIdentity()
+    glTranslatef(0, 0.0, -7.0)
 
-"""Animation"""
-fileName = 'VID_20220617_144805'
-cap = cv2.VideoCapture('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Z_rotation/' + fileName + '_mod.mp4')
-im = ay.imshow(np.random.randn(1920, 1080))
+    drawText((-2.6, 1.8, 2), "PyTeapot", 18)
+    drawText((-2.6, 1.6, 2), "Module to visualize quaternion or Euler angles data", 16)
+    drawText((-2.6, -2, 2), "Press Escape to exit.", 16)
 
-ani = animation.FuncAnimation(fig, animate, interval=3.33)
-fig.tight_layout()
-plt.show()
+    if(useQuat):
+        [yaw, pitch , roll] = quat_to_ypr([w, nx, ny, nz])
+        drawText((-2.6, -1.8, 2), "Yaw: %f, Pitch: %f, Roll: %f" %(yaw, pitch, roll), 16)
+        glRotatef(2 * math.acos(w) * 180.00/math.pi, -1 * nx, nz, ny)
+    else:
+        yaw = nx
+        pitch = ny
+        roll = nz
+        drawText((-2.6, -1.8, 2), "Yaw: %f, Pitch: %f, Roll: %f" %(yaw, pitch, roll), 16)
+        glRotatef(-roll, 0.00, 0.00, 1.00)
+        glRotatef(pitch, 1.00, 0.00, 0.00)
+        glRotatef(yaw, 0.00, 1.00, 0.00)
 
-# startfile('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Z_rotation/' + fileName + '.mp4')
-# ani.save("demo.gif", dpi=150, writer=animation.ImageMagickWriter(fps=30, extra_args=['-loop', '1']))
+    glBegin(GL_QUADS)
+    glColor3f(0.0, 1.0, 0.0)
+    glVertex3f(0.4, 1.0, -0.4)
+    glVertex3f(-0.4, 1.0, -0.4)
+    glVertex3f(-0.4, 1.0, 0.4)
+    glVertex3f(0.4, 1.0, 0.4)
+
+    glColor3f(1.0, 0.5, 0.0)
+    glVertex3f(0.4, -1.0, 0.4)
+    glVertex3f(-0.4, -1.0, 0.4)
+    glVertex3f(-0.4, -1.0, -0.4)
+    glVertex3f(0.4, -1.0, -0.4)
+
+    glColor3f(1.0, 0.0, 0.0)
+    glVertex3f(0.4, 1, 0.4)
+    glVertex3f(-0.4, 1, 0.4)
+    glVertex3f(-0.4, -1, 0.4)
+    glVertex3f(0.4, -1, 0.4)
+
+    glColor3f(1.0, 1.0, 0.0)
+    glVertex3f(0.4, -1.0, -0.4)
+    glVertex3f(-0.4, -1.0, -0.4)
+    glVertex3f(-0.4, 1.0, -0.4)
+    glVertex3f(0.4, 1.0, -0.4)
+
+    glColor3f(0.0, 0.0, 1.0)
+    glVertex3f(-0.4, 1.0, 0.4)
+    glVertex3f(-0.4, 1.0, -0.4)
+    glVertex3f(-0.4, -1.0, -0.4)
+    glVertex3f(-0.4, -1.0, 0.4)
+
+    glColor3f(1.0, 0.0, 1.0)
+    glVertex3f(0.4, 1.0, -0.4)
+    glVertex3f(0.4, 1.0, 0.4)
+    glVertex3f(0.4, -1.0, 0.4)
+    glVertex3f(0.4, -1.0, -0.4)
+    glEnd()
+
+
+def drawText(position, textString, size):
+    font = pygame.font.SysFont("Courier", size, True)
+    textSurface = font.render(textString, True, (255, 255, 255, 255), (0, 0, 0, 255))
+    textData = pygame.image.tostring(textSurface, "RGBA", True)
+    glRasterPos3d(*position)
+    glDrawPixels(textSurface.get_width(), textSurface.get_height(), GL_RGBA, GL_UNSIGNED_BYTE, textData)
+
+def quat_to_ypr(q):
+    yaw   = math.atan2(2.0 * (q[1] * q[2] + q[0] * q[3]), q[0] * q[0] + q[1] * q[1] - q[2] * q[2] - q[3] * q[3])
+    pitch = -math.asin(2.0 * (q[1] * q[3] - q[0] * q[2]))
+    roll  = math.atan2(2.0 * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3])
+    pitch *= 180.0 / math.pi
+    yaw   *= 180.0 / math.pi
+    yaw   -= -0.13  # Declination at Chandrapur, Maharashtra is - 0 degress 13 min
+    roll  *= 180.0 / math.pi
+    return [yaw, pitch, roll]
+
+
+if __name__ == '__main__':
+    main()

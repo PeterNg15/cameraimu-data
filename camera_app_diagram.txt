@@ -1,0 +1,65 @@
+
+Main->Main: setup camera, sensor
+note left of Main
+    cameraSetup()
+    enableSensor(sensorType, sampleRate)
+end note
+Main->IMU: start reading from sensor
+Main->+Camera: start recording session
+
+note left of Main
+    startingVideo()
+end note
+
+note right of Clock
+    Timestamp uses 
+    SystemClock.elapsedRealtimeNanos()
+end note
+
+
+note over Main, IMU: 
+    onSensorChanged(event)
+end note
+
+Main->+IMU: sensor update notification
+
+alt Gyro or Acc or Mag
+    IMU->Main: get sensor data
+    Clock->Main: get elapsed realtime
+end
+
+
+IMU-->-Main: append update to csv
+
+note left of Main
+    PrintWriter.write(sensorData.toString())
+end note
+
+
+
+alt New video frame
+    Camera->Main: new frame
+    note left of Camera
+        reader.acquireNextImage()
+    end note
+    Clock->Main: get elapsed realtime
+    Main->Main: append timestamp to CSV
+    note left of Main
+        BufferedWriter.append(Long.toString(timestamp))
+    end note
+    Main->Main: release video frame
+    note left of Main
+        image.close()
+    end note
+end
+
+
+note over Main, IMU, Clock, Camera: 
+    Repeat until end recording
+end note
+
+Camera-->-Main: end video recording session
+IMU-->Main: stop listening to updates
+
+
+
