@@ -9,7 +9,9 @@ from OpenGL.GL import *
 from OpenGL.GLU import *
 from pygame.locals import *
 import csv
+import os
 from os import startfile
+import cv2
 
 useSerial = False # set true for using serial for data transmission, false for wifi
 useQuat = False   # set true for using quaternions, false for using y,p,r angles
@@ -27,21 +29,31 @@ else:
                          socket.SOCK_DGRAM) # UDP
     sock.bind((UDP_IP, UDP_PORT))
 
-def main():
+def main():    
+    """Setting location"""
+    x = 0
+    y = 0
+    os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (x,y)
+    """"""
     video_flags = OPENGL | DOUBLEBUF
     pygame.init()
     screen = pygame.display.set_mode((640, 480), video_flags)
     """FOR CSV"""
-    fileName = "VID_20220617_144837"
-    data_file = open('visualization/data/Y_rotation/' + fileName + 'orientation_mod.csv',  'r')
+    fileName = "VID_20220617_144805"
+    data_file = open('visualization/data/Z_rotation/' + fileName + 'orientation_mod.csv',  'r')
     data_reader = csv.reader(data_file)
+    """FOR MOVIE"""
+    # cap = cv2.VideoCapture('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Y_rotation/' + fileName + '.mp4')
+    # _, img = cap.read()
+    # shape = img.shape[1::-1]
+    # video_screen = pygame.display.set_mode(shape)
     """"""
     pygame.display.set_caption("IMU orientation visualization")
     resizewin(640, 480)
     init()
     frames = 0
     ticks = pygame.time.get_ticks()
-    #startfile('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Y_rotation/' + fileName + '.mp4')
+    startfile('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Z_rotation/' + fileName + '.mp4')
     for row in data_reader:
         event = pygame.event.poll()
         if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
@@ -56,6 +68,11 @@ def main():
             draw(1, yaw, pitch, roll)
         pygame.display.flip()
         #pygame.time.wait(22) #So that we're in sync to the video
+        """MOVIE"""
+        # video_screen.blit(pygame.image.frombuffer(img.tobytes(), shape, "BGR"), (0, 0))
+        # pygame.display.update()
+        # _, img = cap.read()
+        """"""
         clock.tick(30)
         frames += 1
     print("fps: %d" % ((frames*1000)/(pygame.time.get_ticks()-ticks)))
@@ -136,8 +153,8 @@ def draw(w, nx, ny, nz):
     glLoadIdentity()
     glTranslatef(0, 0.0, -7.0)
 
-    drawText((-2.6, 1.8, 2), "PyTeapot", 18)
-    drawText((-2.6, 1.6, 2), "Module to visualize quaternion or Euler angles data", 16)
+    drawText((-2.6, 1.8, 2), "PyGame", 18)
+    drawText((-2.6, 1.6, 2), "Visualize phone orientation", 16)
     drawText((-2.6, -2, 2), "Press Escape to exit.", 16)
 
     if(useQuat):
