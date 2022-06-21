@@ -12,6 +12,7 @@ import csv
 import os
 from os import startfile
 import cv2
+from scipy import ndimage
 
 useSerial = False # set true for using serial for data transmission, false for wifi
 useQuat = False   # set true for using quaternions, false for using y,p,r angles
@@ -31,8 +32,8 @@ else:
 
 def main():    
     """Setting location"""
-    x = 0
-    y = 0
+    x = 390
+    y = 30
     os.environ['SDL_VIDEO_WINDOW_POS'] = "%d,%d" % (x,y)
     """"""
     video_flags = OPENGL | DOUBLEBUF
@@ -43,17 +44,17 @@ def main():
     data_file = open('visualization/data/Z_rotation/' + fileName + 'orientation_mod.csv',  'r')
     data_reader = csv.reader(data_file)
     """FOR MOVIE"""
-    # cap = cv2.VideoCapture('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Y_rotation/' + fileName + '.mp4')
-    # _, img = cap.read()
-    # shape = img.shape[1::-1]
-    # video_screen = pygame.display.set_mode(shape)
+    cap = cv2.VideoCapture('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Z_rotation/' + fileName + '.mp4')
+    _, img = cap.read()
+    #shape = (640, 480)
+    #video_screen = pygame.display.set_mode(shape)
     """"""
     pygame.display.set_caption("IMU orientation visualization")
     resizewin(640, 480)
     init()
     frames = 0
     ticks = pygame.time.get_ticks()
-    startfile('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Z_rotation/' + fileName + '.mp4')
+    #startfile('D:/Research/UMass Computer Vision Lab/Rotation Estimation/cameraimu_data_repo/visualization/data/Z_rotation/' + fileName + '.mp4')
     for row in data_reader:
         event = pygame.event.poll()
         if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
@@ -66,13 +67,24 @@ def main():
             draw(w, nx, ny, nz)
         else:
             draw(1, yaw, pitch, roll)
-        pygame.display.flip()
         #pygame.time.wait(22) #So that we're in sync to the video
         """MOVIE"""
-        # video_screen.blit(pygame.image.frombuffer(img.tobytes(), shape, "BGR"), (0, 0))
-        # pygame.display.update()
-        # _, img = cap.read()
+        #vid_surface.blit(pygame.image.frombuffer(img.tobytes(), img.shape[1::-1], "BGR"), (0, 0))
+        #pygame.display.update()
+        #pygame.image.load("camera_app_diagram.png")
+        #vid_surface.blit(pygame.image.load("camera_app_diagram.png").convert_alpha(),(0,0))
+        #frame=pygame.surfarray.make_surface(img).convert()
+        # frame = pygame.image.load("camera_app_diagram.png").convert_alpha()
+        # screen = screen.blit(frame,(10,10))
+        exist, img = cap.read()
+        if not exist == True:
+            break
+        resize_img = cv2.resize(img, (640,360), interpolation=cv2.INTER_AREA)
+        rotated_img = cv2.rotate(resize_img, cv2.ROTATE_90_CLOCKWISE)
+        cv2.imshow("Phone recording", rotated_img)
+        # frame = pygame.image.frombuffer(img.tobytes(), img.shape[1::-1], "BGR")
         """"""
+        pygame.display.flip()
         clock.tick(30)
         frames += 1
     print("fps: %d" % ((frames*1000)/(pygame.time.get_ticks()-ticks)))
@@ -123,35 +135,14 @@ def cleanSerialBegin():
             pass
 
 
-def read_data():
-    if(useSerial):
-        ser.reset_input_buffer()
-        cleanSerialBegin()
-        line = ser.readline().decode('UTF-8').replace('\n', '')
-        print(line)
-    else:
-        # Waiting for data from udp port 5005
-        data, addr = sock.recvfrom(1024) # buffer size is 1024 bytes
-        line = data.decode('UTF-8').replace('\n', '')
-        print(line)
-                
-    if(useQuat):
-        w = float(line.split('w')[1])
-        nx = float(line.split('a')[1])
-        ny = float(line.split('b')[1])
-        nz = float(line.split('c')[1])
-        return [w, nx, ny, nz]
-    else:
-        yaw = float(line.split('y')[1])
-        pitch = float(line.split('p')[1])
-        roll = float(line.split('r')[1])
-        return [yaw, pitch, roll]
-
-
 def draw(w, nx, ny, nz):
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
     glTranslatef(0, 0.0, -7.0)
+
+    #frame = pygame.image.load("camera_app_diagram.png").convert_alpha()
+    # screen.blit(frame,(10,10))
+    #glDrawPixels(textSurface.get_width(), textSurface.get_height(), GL_RGBA, GL_UNSIGNED_BYTE, textData)
 
     drawText((-2.6, 1.8, 2), "PyGame", 18)
     drawText((-2.6, 1.6, 2), "Visualize phone orientation", 16)
